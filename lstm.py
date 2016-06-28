@@ -1,49 +1,86 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sun Jun 26 15:55:32 2016
+Created on Mon Jun 27 02:27:28 2016
 
 @author: yash
-"""
 
+TODO
+1 : Word2Vec/GloVe word embedding lookup directly inside tensorflow
+2 : Beam search instad of argmax
+
+"""
 from __future__ import absolute_import, division, print_function
 
-import os
-from six.moves import urllib
+import tensorflow as tf
+from tensorflow.models.rnn import rnn_cell
 
-import tflearn
-from tflearn.data_utils import *
+epoch = 100
+lstm_size = 128
+num_steps = 50
+batch_size = 1
+number_of_layers = 1
+drop_prob = 0.5
+vocab_size = 100 #TODO
 
-path = "shakespeare_input.txt"
-if not os.path.isfile(path):
-    urllib.request.urlretrieve("https://raw.githubusercontent.com/tflearn/tflearn.github.io/master/resources/shakespeare_input.txt", path)
 
-maxlen = 25
+def weight_variable(shape):
+  initial = tf.truncated_normal(shape, stddev=0.1)
+  return tf.Variable(initial)
 
-X, Y, char_idx = \
-    textfile_to_semi_redundant_sequences(path, seq_maxlen=maxlen, redun_step=3)
+def bias_variable(shape):
+  initial = tf.constant(0.1, shape=shape)
+  return tf.Variable(initial)
+  
+# Placeholder for the inputs in a given iteration.
+words = tf.placeholder(tf.int32, [batch_size, num_steps + 1]) #use this for both input and target
+keep_prob = tf.placeholder(tf.float32)
+lstm = rnn_cell.BasicLSTMCell(lstm_size)
+stacked_lstm = rnn_cell.MultiRNNCell([lstm] * number_of_layers)
 
-g = tflearn.input_data([None, maxlen, len(char_idx)])
-g = tflearn.lstm(g, 512, return_seq=True)
-g = tflearn.dropout(g, 0.5)
-g = tflearn.lstm(g, 512, return_seq=True)
-g = tflearn.dropout(g, 0.5)
-g = tflearn.lstm(g, 512)
-g = tflearn.dropout(g, 0.5)
-g = tflearn.fully_connected(g, len(char_idx), activation='softmax')
-g = tflearn.regression(g, optimizer='adam', loss='categorical_crossentropy',
-                       learning_rate=0.001)
+#Define readout variables
+w_out = weight_variable([lstm_size, vocab_size])
+b_out = bias_variable([vocab_size])
+# Initial state of the LSTM memory.
+initial_state = state = tf.zeros([batch_size, lstm.state_size])
+loss = 0.0
+for i in range(num_steps):
+    # The value of state is updated after processing each batch of words.
+    output, state = stacked_lstm(words[:, i], state)
 
-m = tflearn.SequenceGenerator(g, dictionary=char_idx,
-                              seq_maxlen=maxlen,
-                              clip_gradients=5.0,
-                              checkpoint_path='model_shakespeare')
+    #add dropout to the output   
+    out_drop  = tf.dropout(output, keep_prob)
+    
+    #calculate output probs
+    logits = tf.matmul(out_drop, w_out) + b_out
+    probabilities = tf.nn.softmax(logits)
+    
+    #evaluate loss
+    loss += tf.reduce_mean(-tf.reduce_sum(words[:, i+1] * tf.log(probabilities), reduction_indices=[1]))
 
-for i in range(50):
-    seed = random_sequence_from_textfile(path, maxlen)
-    m.fit(X, Y, validation_set=0.1, batch_size=128,
-          n_epoch=1, run_id='shakespeare')
-    print("-- TESTING...")
-    print("-- Test with temperature of 1.0 --")
-    print(m.generate(600, temperature=1.0, seq_seed=seed))
-    print("-- Test with temperature of 0.5 --")
-print(m.generate(600, temperature=0.5, seq_seed=seed))
+final_state = state  
+train_step = tf.train.AdamOptimizer(1e-4).minimize(loss)
+#correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
+#accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+    
+ 
+sess = tf.Session()  
+sess.run(tf.initialize_all_variables())
+  
+# A numpy array holding the state of LSTM after each batch of words.
+updated_state = initial_state.eval()
+total_loss = 0.0
+
+for i in range(epoch):
+    for current_batch_of_words in words_in_dataset:
+        updated_state, _ = sess.run([final_state, train_step],
+            # Initialize the LSTM state from the previous iteration.
+            feed_dict={initial_state: updated_state, words: current_batch_of_words, keep_prob: drop_prob})
+    #total_loss += current_loss
+    #calculate accuracies accuracy.eval(feed_dict={initial_state: updated_state, words: current_batch_of_words, keep_prob: 1.0)
+    
+    
+    
+# embedding_matrix is a tensor of shape [vocabulary_size, embedding size]
+word_embeddings = tf.nn.embedding_lookup(embedding_matrix, word_ids)
+
+sess.close()
