@@ -5,42 +5,52 @@ Created on Mon Jun 13 14:10:48 2016
 Minimal character-level Vanilla RNN model. Written by Andrej Karpathy (@karpathy)
 BSD License
 """
-import numpy as np
 import re
-from collections import Counter
+
+import numpy as np
+import cudamat as cm
+
+cm.cublas_init()
+
+# create two random matrices and copy them to the GPU
+a = cm.CUDAMatrix(np.random.rand(32, 256))
+b = cm.CUDAMatrix(np.random.rand(256, 32))
+
+# perform calculations on the GPU
+c = cm.dot(a, b)
+d = c.sum(axis = 0)
+
+# copy d back to the host (CPU) and print
+print(d.asarray())
+
+
 # data I/O
-files = ['cs.txt', 'maths.txt', 'engg.txt', 'physics.txt']#, 'bio.txt', 'chem.txt', 'management.txt',  'design.txt',  'finance.txt', 'law.txt', 'literature.txt',  'others.txt']
+files = ['cs.txt', 'maths.txt', 'engg.txt', 'physics.txt', 'bio.txt', 'chem.txt', 'management.txt',  'design.txt',  'finance.txt', 'law.txt', 'literature.txt',  'others.txt']
 path = '/home/yash/Project/dataset/SoP_data/'
 d= ""
-thresh = 3
 
 for file in files:
     d += open(path+file, 'r').read() # should be simple plain text file
     #data += f.split() #for word level encoding
 
 data = re.findall(r"\w+|[^\w\s]", d.lower(), re.UNICODE)
-#chars = list(set(data))
-chars = [k for k,v in Counter(data).items() if v>thresh]
-
-UNK = len(chars)
-chars.append('UNKNOWN')
-
+chars = list(set(data))
 data_size, vocab_size = len(data), len(chars)
 print ('data has %d characters, %d unique.' % (data_size, vocab_size))
 char_to_ix = { ch:i for i,ch in enumerate(chars) }
 ix_to_char = { i:ch for i,ch in enumerate(chars) }
 
 # hyperparameters
-hidden_size = 128 # size of hidden layer of neurons
-seq_length = 32 # number of steps to unroll the RNN for
+hidden_size = 100 # size of hidden layer of neurons
+seq_length = 25 # number of steps to unroll the RNN for
 learning_rate = 1e-1
 
 # model parameters
-Wxh = np.random.randn(hidden_size, vocab_size)*0.01 # input to hidden
-Whh = np.random.randn(hidden_size, hidden_size)*0.01 # hidden to hidden
-Why = np.random.randn(vocab_size, hidden_size)*0.01 # hidden to output
-bh = np.zeros((hidden_size, 1)) # hidden bias
-by = np.zeros((vocab_size, 1)) # output bias
+Wxh = cm.CUDAMatrix(np.random.randn(hidden_size, vocab_size)*0.01) # input to hidden
+Whh = cm.CUDAMatrix((np.random.randn(hidden_size, hidden_size)*0.01) # hidden to hidden
+Why = cm.CUDAMatrix((np.random.randn(vocab_size, hidden_size)*0.01) # hidden to output
+bh = cm.CUDAMatrix((np.zeros((hidden_size, 1))) # hidden bias
+by = cm.CUDAMatrix((np.zeros((vocab_size, 1))) # output bias
 
 
 
@@ -50,20 +60,14 @@ def lossFun(inputs, targets, hprev):
   hprev is Hx1 array of initial hidden state
   returns the loss, gradients on model parameters, and last hidden state
   """
-  xs, hs, ys, ps, mask = {}, {}, {}, {}, {}
+  xs, hs, ys, ps = {}, {}, {}, {}
   hs[-1] = np.copy(hprev)
   loss = 0
-  p = 0.9
   # forward pass
   for t in range(len(inputs)):
-    xs[t] = np.zeros((vocab_size,1)) # encode in 1-of-k representation
+    xs[t] = cm.empty((vocab_size,1)) # encode in 1-of-k representation
     xs[t][inputs[t]] = 1
-    hs[t] = np.tanh(np.dot(Wxh, xs[t]) + np.dot(Whh, hs[t-1]) + bh) # hidden state
-    
-    # dropout mask
-    mask[t] = (np.random.rand(*hs[t].shape) < p) / p 
-    hs[t] *= mask[t] # drop!
-    
+    hs[t] = np.tanh(cm.dot(Wxh, xs[t]) + cm.dot(Whh, hs[t-1]) + bh) # hidden state
     ys[t] = np.dot(Why, hs[t]) + by # unnormalized log probabilities for next chars
     ps[t] = np.exp(ys[t]) / np.sum(np.exp(ys[t])) # probabilities for next chars
     #print(ps[t])
@@ -89,7 +93,7 @@ def lossFun(inputs, targets, hprev):
     dhnext = np.dot(Whh.T, dhraw)
   
   for dparam in [dWxh, dWhh, dWhy, dbh, dby]:
-    np.clip(dparam, -10, 10, out=dparam) # clip to mitigate exploding gradients
+    np.clip(dparam, -5, 5, out=dparam) # clip to mitigate exploding gradients
   
   return loss, dWxh, dWhh, dWhy, dbh, dby, hs[len(inputs)-1]
 
@@ -125,11 +129,11 @@ while True:
     hprev = np.zeros((hidden_size,1)) # reset RNN memory
     p = 0 # go from start of data
   
-  inputs = [char_to_ix.get(ch, UNK) for ch in data[p:p+seq_length]]
-  targets = [char_to_ix.get(ch, UNK) for ch in data[p+1:p+seq_length+1]]
+  inputs = [char_to_ix[ch] for ch in data[p:p+seq_length]]
+  targets = [char_to_ix[ch] for ch in data[p+1:p+seq_length+1]]
 
   # sample from the model now and then
-  if n % 1000 == 0:
+  if n % 5000 == 0:
     sample_ix = sample(hprev, inputs[0], 200)
     txt = ''.join(ix_to_char[ix]+' ' for ix in sample_ix)
     print ('----\n %s \n----' % (txt, ))
@@ -137,7 +141,7 @@ while True:
   # forward seq_length characters through the net and fetch gradient
   loss, dWxh, dWhh, dWhy, dbh, dby, hprev = lossFun(inputs, targets, hprev)
   smooth_loss = smooth_loss * 0.999 + loss * 0.001
-  if n % 100 == 0: print ('iter %d, loss: %f' % (n, smooth_loss)) # print progress
+  if n % 1000 == 0: print ('iter %d, loss: %f' % (n, smooth_loss)) # print progress
   
   # perform parameter update with Adagrad
   for param, dparam, mem in zip([Wxh, Whh, Why, bh, by], 

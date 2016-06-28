@@ -87,6 +87,15 @@ class Data:
                             self.vectors[vals[0]] = [float(x) for x in vals[1:]]
                 else:
                     self.vectors[vals[0]] = [float(x) for x in vals[1:]]
+        
+        #scale the vectors b/w [-1,1]            
+        maxi = np.max(list(self.vectors.values()))
+        mini = np.min(list(self.vectors.values()))
+        if abs(mini) > abs(maxi):
+            maxi = abs(mini)
+            
+        for key, val in self.vectors.items():
+            self.vectors[key] = [v/maxi for v in val]
     
 #        vocab_size = len(self.vectors.keys())
 #        vocab  = {w: idx for idx, w in enumerate(words)}
