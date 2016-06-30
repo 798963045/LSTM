@@ -80,7 +80,7 @@ with tf.variable_scope("RNN"):
             prob = tf.tanh(logits)
             #http://stats.stackexchange.com/questions/12754/matching-loss-function-for-tanh-units-in-a-neural-net
             error = tf.mul((tf.add(tf.neg(words[:,i+1, :]),1)*tf.log(tf.add(tf.neg(prob), 1)) \
-                            +tf.add(words[:,i+1, :], 1)*tf.log(tf.add(prob, 1))), -0.5)
+                            +tf.add(words[:,i+1, :], 1)*tf.log(tf.add(prob, 1))), 0.5)
         else:
             prob = tf.nn.softmax(logits)  
             error = words[:, i+1, :] * tf.log(tf.div(prob, words[:, i+1, :]))
@@ -109,11 +109,13 @@ sess.run(tf.initialize_all_variables())
 updated_state = initial_state.eval(session = sess)
 #total_loss = 0.0
 
-folder = '/home/yash/Project/dataset/SoP_data/'
-files = ['cs.txt', 'maths.txt', 'engg.txt', 'physics.txt', 'bio.txt', 'chem.txt', 'management.txt',  'design.txt',  'finance.txt', 'law.txt', 'literature.txt',  'others.txt']
+#folder = '/home/yash/Project/dataset/SoP_data/'
+#files = ['cs.txt', 'maths.txt', 'engg.txt', 'physics.txt', 'bio.txt', 'chem.txt', 'management.txt',  'design.txt',  'finance.txt', 'law.txt', 'literature.txt',  'others.txt']
+folder = '/home/yash/Project/dataset/wikipedia_small/'
+files = ['wiki_text.txt']
 data = Data(folder, files, batch_size, num_steps)
 ctr = 0
-for i in range(epoch):
+while True:#for i in range(epoch):
     while data.has_more_data:
         d = data.get_next_batch()
         updated_state, l, _ = sess.run([final_state, loss, train_step],
@@ -122,8 +124,7 @@ for i in range(epoch):
     
         if ctr%10 == 0:
             print("Error at batch %d: %0.5f" %(ctr, l) )
-            break
-        
+            
         ctr += 1
         #total_loss += current_loss
         #calculate accuracies accuracy.eval(feed_dict={initial_state: updated_state, words: current_batch_of_words, keep_prob: 1.0)
