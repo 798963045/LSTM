@@ -8,9 +8,18 @@ BSD License
 import numpy as np
 import re
 from collections import Counter
+
+def preprocess(d):
+    d = re.sub(r' +',r' ',d.upper()) #remove extra spaces
+    #remove non-recognisable char
+    #return re.sub(r'[^\x00-\x7f]',r'',d.upper()) 
+    # print ([ord(c) for c in ['!', ':', '.', ',', '\"', "\'", ' ']])
+    stripped = [c for c in d if (64<ord(c)<91 or 96<ord(c)<123 or 47<ord(c)<58 or ord(c) in [33, 58, 46, 44, 34, 39, 32]) ]
+    return ''.join(stripped)
+    
 # data I/O
-files = ['cs.txt', 'maths.txt', 'engg.txt', 'physics.txt']#, 'bio.txt', 'chem.txt', 'management.txt',  'design.txt',  'finance.txt', 'law.txt', 'literature.txt',  'others.txt']
-path = '/home/yash/Project/dataset/SoP_data/'
+files = ['wiki_text.txt']#['cs.txt', 'maths.txt', 'engg.txt', 'physics.txt']#, 'bio.txt', 'chem.txt', 'management.txt',  'design.txt',  'finance.txt', 'law.txt', 'literature.txt',  'others.txt']
+path = '/home/yash/Project/dataset/wikipedia_small/'#'/home/yash/Project/dataset/SoP_data/'
 d= ""
 thresh = 3
 
@@ -18,12 +27,13 @@ for file in files:
     d += open(path+file, 'r').read() # should be simple plain text file
     #data += f.split() #for word level encoding
 
-data = re.findall(r"\w+|[^\w\s]", d.lower(), re.UNICODE)
-#chars = list(set(data))
-chars = [k for k,v in Counter(data).items() if v>thresh]
+data = preprocess(d)
+chars = list(set(data))
+#data = re.findall(r"\w+|[^\w\s]", d.lower(), re.UNICODE)
+#chars = [k for k,v in Counter(data).items() if v>thresh]
 
 UNK = len(chars)
-chars.append('UNKNOWN')
+#chars.append('UNKNOWN')
 
 data_size, vocab_size = len(data), len(chars)
 print ('data has %d characters, %d unique.' % (data_size, vocab_size))
@@ -31,8 +41,8 @@ char_to_ix = { ch:i for i,ch in enumerate(chars) }
 ix_to_char = { i:ch for i,ch in enumerate(chars) }
 
 # hyperparameters
-hidden_size = 128 # size of hidden layer of neurons
-seq_length = 32 # number of steps to unroll the RNN for
+hidden_size = 256 # size of hidden layer of neurons
+seq_length = 16 # number of steps to unroll the RNN for
 learning_rate = 1e-1
 
 # model parameters
@@ -53,7 +63,7 @@ def lossFun(inputs, targets, hprev):
   xs, hs, ys, ps, mask = {}, {}, {}, {}, {}
   hs[-1] = np.copy(hprev)
   loss = 0
-  p = 0.9
+  p = 0.7
   # forward pass
   for t in range(len(inputs)):
     xs[t] = np.zeros((vocab_size,1)) # encode in 1-of-k representation
@@ -61,7 +71,7 @@ def lossFun(inputs, targets, hprev):
     hs[t] = np.tanh(np.dot(Wxh, xs[t]) + np.dot(Whh, hs[t-1]) + bh) # hidden state
     
     # dropout mask
-    mask[t] = (np.random.rand(*hs[t].shape) < p) / p 
+    mask[t] = (np.random.rand(hs[t].shape[0], hs[t].shape[1]) < p) / p 
     hs[t] *= mask[t] # drop!
     
     ys[t] = np.dot(Why, hs[t]) + by # unnormalized log probabilities for next chars
@@ -130,8 +140,8 @@ while True:
 
   # sample from the model now and then
   if n % 1000 == 0:
-    sample_ix = sample(hprev, inputs[0], 200)
-    txt = ''.join(ix_to_char[ix]+' ' for ix in sample_ix)
+    sample_ix = sample(hprev, inputs[0], 500)
+    txt = ''.join(ix_to_char[ix]+'' for ix in sample_ix)
     print ('----\n %s \n----' % (txt, ))
 
   # forward seq_length characters through the net and fetch gradient

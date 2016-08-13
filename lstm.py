@@ -16,7 +16,7 @@ from tensorflow.python.ops import rnn_cell
 from data import Data
 
 epoch = 1
-lstm_size = 512
+lstm_size = 1024
 num_steps = 32
 batch_size = 16
 number_of_layers = 2
@@ -81,6 +81,7 @@ with tf.variable_scope("RNN"):
             #http://stats.stackexchange.com/questions/12754/matching-loss-function-for-tanh-units-in-a-neural-net
             error = tf.mul((tf.add(tf.neg(words[:,i+1, :]),1)*tf.log(tf.add(tf.neg(prob), 1)) \
                             +tf.add(words[:,i+1, :], 1)*tf.log(tf.add(prob, 1))), 0.5)
+            #error = words[:, i+1, :] *  tf.log(tf.div(prob, words[:, i+1, :]))
         else:
             prob = tf.nn.softmax(logits)  
             error = words[:, i+1, :] * tf.log(tf.div(prob, words[:, i+1, :]))
@@ -98,11 +99,15 @@ train_step = optimizer.apply_gradients(zip(grads, tvars))
 #correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
 #accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
+def generate(seed, state):
+        updated_state, l, _ = sess.run([prob],
+        # Initialize the LSTM state from the previous iteration.
+        feed_dict={initial_state: state, words: d, keep_prob: drop_prob})
 
 
 sess = tf.Session()  
 merged = tf.merge_all_summaries()
-train_writer = tf.train.SummaryWriter("/home/yash/Project/LSTM/log/" + '/train', sess.graph)
+train_writer = tf.train.SummaryWriter("/home/yash/Project/LSTM/log/" + '/train2', sess.graph)
 sess.run(tf.initialize_all_variables())
   
 # A numpy array holding the state of LSTM after each batch of words.
@@ -124,6 +129,9 @@ while True:#for i in range(epoch):
     
         if ctr%10 == 0:
             print("Error at batch %d: %0.5f" %(ctr, l) )
+            
+        #if ctr%500 == 0:
+            #generate(updated_state)
             
         ctr += 1
         #total_loss += current_loss
