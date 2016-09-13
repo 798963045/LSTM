@@ -16,7 +16,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--save_dir', type=str, default='save',
                        help='model directory to store checkpointed models')
-    parser.add_argument('-n', type=int, default=500,
+    parser.add_argument('-n', type=int, default=5,
                        help='number of characters to sample')
     parser.add_argument('--prime', type=text_type, default=u' ',
                        help='prime text')
@@ -26,6 +26,33 @@ def main():
     args = parser.parse_args()
     sample(args)
 
+
+def postprocess(string):
+    
+    #remove Initial spacing
+    idx = 0
+    while(string[idx] == ' '): idx += 1
+    
+    #capitalize First letters of sentences
+    prv = string[idx]
+    newstr = prv.upper()
+    caps = False
+    for pos, char in enumerate(string[idx+1:]):
+        if prv == '.':
+            caps = True
+            
+        if caps or ((char == 'i' or char == 'I') and (string[pos-1]==' ' and string[pos+1]==' ')):
+            newstr += char.upper()
+        else:
+            newstr += char.lower()
+        
+        if newstr[-1].lower() != newstr[-1].upper():
+            caps = False
+            
+        prv = char    
+    return newstr
+        
+    
 def sample(args):
     with open(os.path.join(args.save_dir, 'config.pkl'), 'rb') as f:
         saved_args = pickle.load(f)
@@ -38,7 +65,7 @@ def sample(args):
         ckpt = tf.train.get_checkpoint_state(args.save_dir)
         if ckpt and ckpt.model_checkpoint_path:
             saver.restore(sess, ckpt.model_checkpoint_path)
-            print(model.sample(sess, chars, vocab, args.n, args.prime, args.sample))
+            print(postprocess(model.sample(sess, chars, vocab, args.n, args.prime, args.sample)))
 
 if __name__ == '__main__':
     main()
